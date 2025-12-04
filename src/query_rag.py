@@ -1,3 +1,10 @@
+"""
+File: query_rag.py
+Author: Derrick Chen
+Date: 2025-12-04
+Description:
+Queries a retrieval-augmented generation (RAG) system using a built index.
+"""
 import os
 import json
 from typing import List
@@ -18,6 +25,10 @@ LLM_MODEL_NAME = "google/flan-t5-base"  # small instruction-following model
 
 
 def load_index():
+    """
+    Docstring for load_index
+    Loads the embeddings and chunk metadata from the artifacts directory.
+    """
     if not (os.path.exists(EMBEDDINGS_PATH) and os.path.exists(CHUNKS_PATH)):
         raise RuntimeError("Index not found. Run build_index.py first.")
     embeddings = np.load(EMBEDDINGS_PATH)
@@ -33,6 +44,14 @@ def retrieve_top_k(
     chunks: List[dict],
     k: int = 3,
 ):
+    """
+    Retrieve the top-k most similar chunks to the query.
+    :param query: The user query string
+    :param embedder: The embedding model
+    :param embeddings: The array of chunk embeddings
+    :param chunks: The list of chunk metadata
+    :param k: Number of top chunks to retrieve
+    """
     query_vec = embedder.encode([query], convert_to_numpy=True)
     sims = cosine_similarity(query_vec, embeddings)[0]
     top_idx = sims.argsort()[-k:][::-1]
@@ -41,7 +60,11 @@ def retrieve_top_k(
 
 
 def build_context(chunks: List[dict], max_chars: int = 1500) -> str:
-    """Concatenate retrieved chunks into a context string with a rough char limit."""
+    """
+    Concatenate retrieved chunks into a context string with a rough char limit.
+    :param chunks: List of chunk metadata
+    :param max_chars: Maximum number of characters in the context
+    """
     pieces = []
     total = 0
     for c in chunks:
@@ -54,6 +77,16 @@ def build_context(chunks: List[dict], max_chars: int = 1500) -> str:
 
 
 def main():
+    """
+    Docstring for main
+    Main function to query the RAG system
+    1. Load the index (embeddings and chunks)
+    2. Load the embedding model and LLM
+    3. Prompt user for a question
+    4. Retrieve relevant chunks
+    5. Build context and generate answer using LLM
+    6. Display answer and retrieved context
+    """
     print("Loading index...")
     embeddings, chunks = load_index()
 

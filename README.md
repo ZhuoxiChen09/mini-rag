@@ -25,16 +25,46 @@ It builds an embedding index over local `.txt` documents and lets you ask natura
 llm-rag/
 │
 ├── data/                 # Source documents (.txt)
-│   ├── doc1.txt
-│   └── doc2.txt
-│
-├── artifacts/            # Saved embeddings and chunk metadata (generated)
-│   ├── embeddings.npy
-│   └── chunks.json
-│
-├── src/
-│   ├── build_index.py    # Build embeddings index from data/
-│   └── query_rag.py      # Interactive RAG-style Q&A
-│
-├── requirements.txt
-└── README.md
+# mini-rag — Minimal RAG demo
+
+A compact Retrieval-Augmented Generation (RAG) example that embeds local `.txt` files and answers questions using a small instruction-tuned LLM.
+
+## Quickstart
+
+Prerequisites: Python 3.8+, internet access (models are downloaded on first run).
+
+1. Create and activate a virtual environment (PowerShell):
+
+```
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirement.txt
+```
+
+2. Build the retrieval index (creates `artifacts/`):
+
+```
+python -m src.build_index
+```
+
+3. Run the interactive RAG query loop:
+
+```
+python -m src.query_rag
+```
+
+## Files
+
+- `data/` — place source `.txt` documents here.
+- `artifacts/` — generated `embeddings.npy` and `chunks.json` (output of the index build).
+- `src/build_index.py` — builds document chunks and embeddings.
+- `src/query_rag.py` — interactive retrieval + generation loop.
+- `requirement.txt` — Python dependencies.
+
+## Notes
+
+- If `data/` contains no `.txt` files, `build_index` will raise an error.
+- Models are downloaded automatically (first run may take time and require internet).
+- For other shells, activate the virtual environment with the appropriate command.
+
+Minimal. Reproducible. Ready for local experimentation.

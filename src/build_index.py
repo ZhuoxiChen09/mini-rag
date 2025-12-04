@@ -1,3 +1,10 @@
+"""
+File: build_index.py
+Author: Derrick Chen
+Date: 2025-12-04
+Description:
+Builds an index of document chunks and their embeddings for retrieval.
+"""
 import os
 import json
 from typing import List, Dict
@@ -9,8 +16,15 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "artifacts")
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
-
 def load_documents(data_dir: str) -> List[Dict]:
+    """
+    Docstring for load_documents
+    
+    :param data_dir: Description
+    :type data_dir: str
+    :return: Description
+    :rtype: List[Dict]
+    """
     docs = []
     for fname in os.listdir(data_dir):
         if fname.lower().endswith(".txt"):
@@ -22,7 +36,18 @@ def load_documents(data_dir: str) -> List[Dict]:
 
 
 def chunk_text(text: str, chunk_size: int = 400, overlap: int = 100) -> List[str]:
-    """Split text into overlapping word chunks."""
+    """
+    Splits text into chunks of approximately chunk_size words, with specified overlap.
+
+    :param text: The text to chunk
+    :type text: str
+    :param chunk_size: Number of words per chunk
+    :type chunk_size: int
+    :param overlap: Number of overlapping words between chunks
+    :type overlap: int
+    :return: List of text chunks
+    :rtype: List[str]
+    """
     words = text.split()
     chunks = []
     start = 0
@@ -37,6 +62,14 @@ def chunk_text(text: str, chunk_size: int = 400, overlap: int = 100) -> List[str
 
 
 def main():
+    """
+    Docstring for main
+    Main function to build the index
+    1. Load documents from data directory
+    2. Chunk the documents
+    3. Generate embeddings for each chunk
+    4. Save embeddings and chunk metadata to artifacts directory
+    """
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     print(f"Loading documents from {DATA_DIR}...")

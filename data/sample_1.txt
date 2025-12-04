@@ -1,0 +1,7 @@
+Large language models (LLMs) are machine learning systems trained to predict the next token in a sequence of text. Although the training objective is simple, when models are scaled up in data, parameters, and compute, they begin to exhibit surprisingly rich behaviors. They can answer questions, summarize documents, translate between languages, and follow natural language instructions.
+
+Modern LLMs are typically based on the Transformer architecture, which uses self-attention mechanisms to process sequences in parallel. During training, the model is exposed to massive text corpora, such as web pages, books, and code. The model learns statistical patterns of language, but these patterns often encode useful world knowledge and reasoning heuristics.
+
+LLMs do not “understand” language in a human sense, but they can approximate understanding by leveraging the correlations they have learned. Because they are trained only to predict tokens, they can sometimes hallucinate or produce confident but incorrect statements. For this reason, LLM outputs should be checked when used in high-stakes settings.
+
+A growing area of research focuses on aligning LLM behavior with human intents and values. Techniques such as instruction tuning and reinforcement learning from human feedback (RLHF) can make models more helpful, honest, and harmless. Another practical direction is retrieval-augmented generation, where an LLM is combined with a search or retrieval system so that it can ground its answers in external data.

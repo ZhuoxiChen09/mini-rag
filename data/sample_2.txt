@@ -1,0 +1,7 @@
+The Transformer architecture was introduced in the paper “Attention Is All You Need” in 2017. Unlike recurrent neural networks, Transformers process all tokens in a sequence simultaneously using a mechanism called self-attention. This allows them to model long-range dependencies more effectively and to take advantage of parallel computation on modern hardware.
+
+A Transformer encoder layer typically consists of multi-head self-attention and a position-wise feed-forward network, both wrapped with residual connections and layer normalization. Self-attention lets each token attend to every other token in the sequence, computing weighted combinations of token representations. Multi-head attention repeats this process several times in parallel, allowing the model to capture different types of relationships.
+
+Position information is injected using positional encodings or learned position embeddings, because the self-attention mechanism itself is permutation-invariant. By stacking many layers of attention and feed-forward blocks, Transformers can build hierarchical representations of text, images, or other modalities.
+
+Transformers have become the dominant architecture in natural language processing and are also widely used in vision, speech, and multimodal models. Large language models such as GPT, PaLM, and LLaMA are all based on Transformer decoders. Their ability to scale with more parameters and data is a key reason for the recent progress in generative AI.

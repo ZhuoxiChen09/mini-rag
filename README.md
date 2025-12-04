@@ -1,30 +1,3 @@
-# LLM RAG Demo — Retrieval-Augmented Question Answering
-
-This project is a minimal **Retrieval-Augmented Generation (RAG)** demo using:
-
-- `sentence-transformers` for semantic search  
-- A small instruction-tuned LLM (`google/flan-t5-base`) for answer generation  
-
-It builds an embedding index over local `.txt` documents and lets you ask natural language questions, retrieving relevant chunks and generating an answer based on them.
-
----
-
-## Features
-
-- Embeds local `.txt` files using `all-MiniLM-L6-v2`
-- Chunks long documents into overlapping segments
-- Performs cosine-similarity-based retrieval
-- Uses a small open-source LLM to answer questions using retrieved context
-- Runs fully locally (no external API keys required)
-
----
-
-## Structure
-
-```text
-llm-rag/
-│
-├── data/                 # Source documents (.txt)
 # mini-rag — Minimal RAG demo
 
 A compact Retrieval-Augmented Generation (RAG) example that embeds local `.txt` files and answers questions using a small instruction-tuned LLM.
@@ -38,7 +11,7 @@ Prerequisites: Python 3.8+, internet access (models are downloaded on first run)
 ```
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirement.txt
+pip install -r requirements.txt
 ```
 
 2. Build the retrieval index (creates `artifacts/`):
@@ -53,18 +26,51 @@ python -m src.build_index
 python -m src.query_rag
 ```
 
+## Example
+
+Query:
+
+```
+What is the purpose of this repository?
+```
+
+Expected (example) answer:
+
+```
+This repository demonstrates a minimal RAG pipeline: it embeds local text documents, retrieves relevant chunks for a user query, and uses a small instruction-tuned LLM to generate a concise answer based on the retrieved context.
+```
+
 ## Files
 
-- `data/` — place source `.txt` documents here.
-- `artifacts/` — generated `embeddings.npy` and `chunks.json` (output of the index build).
+- `data/` — source `.txt` documents used to build the index.
+- `artifacts/` — generated `embeddings.npy` and `chunks.json` (output of `build_index`).
 - `src/build_index.py` — builds document chunks and embeddings.
 - `src/query_rag.py` — interactive retrieval + generation loop.
-- `requirement.txt` — Python dependencies.
+- `requirements.txt` — Python dependencies.
 
 ## Notes
 
 - If `data/` contains no `.txt` files, `build_index` will raise an error.
 - Models are downloaded automatically (first run may take time and require internet).
-- For other shells, activate the virtual environment with the appropriate command.
+- Activate the virtual environment with the appropriate command for your shell.
 
 Minimal. Reproducible. Ready for local experimentation.
+
+## Project structure
+
+```
+mini-rag/
+├── data/
+│   ├── sample_1.txt
+│   └── sample_2.txt
+├── artifacts/
+│   ├── embeddings.npy
+│   └── chunks.json
+├── src/
+│   ├── build_index.py
+│   └── query_rag.py
+├── requirements.txt
+└── README.md
+```
+
+Files shown are current as of this repository snapshot. The `.git/` directory is present but omitted above.

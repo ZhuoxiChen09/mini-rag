@@ -1,0 +1,16 @@
+mini-rag — Purpose and usage
+
+This repository is a minimal Retrieval-Augmented Generation (RAG) demonstration intended for local experimentation and teaching. It shows a compact pipeline that:
+
+- Embeds local `.txt` documents using `sentence-transformers` (model: all-MiniLM-L6-v2).
+- Splits long documents into overlapping chunks and stores chunk metadata.
+- Builds a searchable embedding index (`artifacts/embeddings.npy` and `artifacts/chunks.json`).
+- Retrieves relevant chunks by cosine similarity for a user query.
+- Uses a small instruction-tuned language model (`google/flan-t5-base`) to generate concise answers based on retrieved context.
+
+How to use:
+1. Place source `.txt` files in the `data/` directory.
+2. Run `python -m src.build_index` to generate the embedding index.
+3. Run `python -m src.query_rag` and ask natural-language questions.
+
+Goal: provide a reproducible, minimal example of a local RAG pipeline that is easy to read, modify, and extend.

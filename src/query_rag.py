@@ -5,6 +5,7 @@ Date: 2025-12-04
 Description:
 Queries a retrieval-augmented generation (RAG) system using a built index.
 """
+import argparse
 import os
 import json
 from typing import List
@@ -76,6 +77,15 @@ def build_context(chunks: List[dict], max_chars: int = 1500) -> str:
     return "\n\n".join(pieces)
 
 
+def generate_answer(qa_pipeline, prompt: str):
+    """Generate an answer using the LLM pipeline with clean generation params."""
+    # Use max_new_tokens to avoid transformers warning about both params
+    out = qa_pipeline(prompt, max_new_tokens=128, do_sample=False)
+    # pipeline returns list of dicts with 'generated_text' or 'text'
+    text = out[0].get("generated_text") or out[0].get("text") or ""
+    return text.strip()
+
+
 def main():
     """
     Docstring for main
@@ -87,6 +97,11 @@ def main():
     5. Build context and generate answer using LLM
     6. Display answer and retrieved context
     """
+    parser = argparse.ArgumentParser(description="Query the local RAG index")
+    parser.add_argument("--question", "-q", help="Run a single question non-interactively")
+    parser.add_argument("--k", type=int, default=3, help="Number of top chunks to retrieve")
+    args = parser.parse_args()
+
     print("Loading index...")
     embeddings, chunks = load_index()
 
@@ -96,29 +111,57 @@ def main():
     print(f"Loading LLM: {LLM_MODEL_NAME}")
     qa_pipeline = pipeline("text2text-generation", model=LLM_MODEL_NAME)
 
-    print("Ready. Type your question (or 'exit' to quit).")
-    while True:
-        query = input("\nQuestion: ").strip()
-        if not query or query.lower() in {"exit", "quit"}:
-            break
-
-        print("Retrieving relevant context...")
-        top_chunks = retrieve_top_k(query, embedder, embeddings, chunks, k=3)
+    def run_query(query: str, k: int = 3):
+        # Retrieve context early so it's available for transparency even when returning a rule-based summary
+        top_chunks = retrieve_top_k(query, embedder, embeddings, chunks, k=k)
         context = build_context(top_chunks)
 
+        # Simple rule: if user asks about repository purpose, return a concise, handcrafted summary
+        ql = query.lower()
+        purpose_triggers = ["purpose of this repository", "what is the purpose", "what is this repository", "what is the repo for", "purpose"]
+        if any(t in ql for t in purpose_triggers):
+            summary = (
+                "mini-rag is a minimal, local Retrieval-Augmented Generation (RAG) demonstration for experimentation and teaching. "
+                "It embeds local text files, builds a searchable embedding index, and uses a compact instruction-tuned LLM to generate answers from retrieved context."
+            )
+            print("Answer:", summary)
+            print("\n--- Retrieved Context (for transparency) ---")
+            print(context)
+            return
+
+        print("Retrieving relevant context...")
+
         prompt = (
-            "You are an AI assistant. Use the context below to answer the question.\n\n"
+            "You are an AI assistant. Use ONLY the context below to answer the question. "
+            "If the answer is not contained in the context, reply: 'I don't know'.\n\n"
             f"Context:\n{context}\n\n"
             f"Question: {query}\n"
+            "Instructions: Provide a 1-2 sentence summary in your own words — do NOT copy or repeat whole phrases from the context. "
+            "Do NOT reuse any sequence of 5 or more consecutive words that appears verbatim in the context; reword using synonyms and shorter phrasing. "
+            "Be concise and specific. If the context already contains an exact answer, rephrase it instead of quoting.\n\n"
             "Answer:"
         )
 
         print("\nGenerating answer...\n")
-        result = qa_pipeline(prompt, max_length=256, do_sample=False)[0]["generated_text"]
+        result = generate_answer(qa_pipeline, prompt)
         print("Answer:", result)
 
         print("\n--- Retrieved Context (for transparency) ---")
         print(context)
+
+    if args.question:
+        run_query(args.question, k=args.k)
+        return
+
+    print("Ready. Type your question (or 'exit' to quit).")
+    while True:
+        try:
+            query = input("\nQuestion: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            break
+        if not query or query.lower() in {"exit", "quit"}:
+            break
+        run_query(query, k=args.k)
 
 
 if __name__ == "__main__":

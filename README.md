@@ -1,10 +1,13 @@
-# mini-rag — Minimal RAG demo
+# mini-rag
 
-A compact Retrieval-Augmented Generation (RAG) example that embeds local `.txt` files and answers questions using a small instruction-tuned LLM.
+A compact Retrieval-Augmented Generation (RAG) demonstration that embeds local text files and answers questions using instruction-tuned language models.
 
-## Quickstart
+## Getting Started
 
-Prerequisites: Python 3.8+, internet access (models are downloaded on first run).
+### Prerequisites
+
+- Python 3.8 or higher
+- Internet access (models are downloaded on first run)
 
 1. Create and activate a virtual environment (PowerShell):
 
@@ -26,37 +29,19 @@ python -m src.build_index
 python -m src.query_rag
 ```
 
-## Example
+## Example Usage
 
 Query:
-
 ```
 What is the purpose of this repository?
 ```
 
-Expected (example) answer:
-
+Expected Output:
 ```
 This repository demonstrates a minimal RAG pipeline: it embeds local text documents, retrieves relevant chunks for a user query, and uses a small instruction-tuned LLM to generate a concise answer based on the retrieved context.
 ```
 
-## Files
-
-- `data/` — source `.txt` documents used to build the index.
-- `artifacts/` — generated `embeddings.npy` and `chunks.json` (output of `build_index`).
-- `src/build_index.py` — builds document chunks and embeddings.
-- `src/query_rag.py` — interactive retrieval + generation loop.
-- `requirements.txt` — Python dependencies.
-
-## Notes
-
-- If `data/` contains no `.txt` files, `build_index` will raise an error.
-- Models are downloaded automatically (first run may take time and require internet).
-- Activate the virtual environment with the appropriate command for your shell.
-
-Minimal. Reproducible. Ready for local experimentation.
-
-## Project structure
+## Project Structure
 
 ```
 mini-rag/
@@ -73,4 +58,16 @@ mini-rag/
 └── README.md
 ```
 
-Files shown are current as of this repository snapshot. The `.git/` directory is present but omitted above.
+## File Descriptions
+
+- `data/` — Source text documents used to build the retrieval index
+- `artifacts/` — Generated embeddings and chunk metadata
+- `src/build_index.py` — Builds document chunks and embeddings
+- `src/query_rag.py` — Interactive retrieval and generation loop
+- `requirements.txt` — Python dependencies
+
+## Notes
+
+- Text files must be present in `data/` directory for index building
+- Models are downloaded automatically on first run (requires internet access)
+- Activate the virtual environment before running commands

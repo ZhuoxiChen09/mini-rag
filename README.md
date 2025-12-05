@@ -41,6 +41,12 @@ Expected Output:
 This repository demonstrates a minimal RAG pipeline: it embeds local text documents, retrieves relevant chunks for a user query, and uses a small instruction-tuned LLM to generate a concise answer based on the retrieved context.
 ```
 
+## Retrieval & Answering Behavior
+
+- The retriever uses cosine similarity over chunk embeddings. A minimum similarity threshold is applied (default: `0.15`) — if no chunk meets this threshold the system will respond with `I don't know` to avoid hallucination.
+- The LLM generation is constrained for brevity: answers are post-processed to produce 1–2 short sentences (word-truncated if necessary) to keep responses concise and easier to read.
+- You can adjust the threshold and output behavior by editing `src/query_rag.py` (see `retrieve_top_k(..., min_similarity=...)` and the `generate_answer` post-processing logic).
+
 ## Project Structure
 
 ```
@@ -71,3 +77,15 @@ mini-rag/
 - Text files must be present in `data/` directory for index building
 - Models are downloaded automatically on first run (requires internet access)
 - Activate the virtual environment before running commands
+
+## Quick Test Commands
+
+Run a single question non-interactively (useful for testing):
+```
+python -m src.query_rag --question "What is a large language model?" --k 3
+```
+
+Rebuild the index after changing files in `data/`:
+```
+python -m src.build_index
+```

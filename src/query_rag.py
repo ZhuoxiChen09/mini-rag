@@ -1,167 +1,226 @@
 """
-File: query_rag.py
+File: query_rag.py 
 Author: Derrick Chen
 Date: 2025-12-04
 Description:
-Queries a retrieval-augmented generation (RAG) system using a built index.
+  Query a simple Retrieval-Augmented Generation (RAG) index and return a
+  strictly short (1–2 sentences) paraphrased answer.
 """
+from __future__ import annotations
+
 import argparse
-import os
 import json
-from typing import List
+import os
+import re
+import sys
+from dataclasses import dataclass
+from typing import List, Sequence, Tuple
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
 from transformers import pipeline
 
-BASE_DIR = os.path.dirname(__file__)
-ARTIFACTS_DIR = os.path.join(BASE_DIR, "..", "artifacts")
+INDEX_DIR_DEFAULT = os.path.join(os.path.dirname(__file__), "..", "artifacts")
+EMBEDDER_DEFAULT = "sentence-transformers/all-MiniLM-L6-v2"
+LLM_MODEL_NAME = "google/flan-t5-base"  # drop-in upsize possible
 
-EMBEDDINGS_PATH = os.path.join(ARTIFACTS_DIR, "embeddings.npy")
-CHUNKS_PATH = os.path.join(ARTIFACTS_DIR, "chunks.json")
+@dataclass
+class Chunk:
+    text: str
+    source: str
+    chunk_id: int
 
-EMBED_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-LLM_MODEL_NAME = "google/flan-t5-base"  # small instruction-following model
+def load_index(index_dir: str) -> Tuple[np.ndarray, List[Chunk]]:
+    emb_path = os.path.join(index_dir, "embeddings.npy")
+    meta_path = os.path.join(index_dir, "chunks.json")
+    if not (os.path.exists(emb_path) and os.path.exists(meta_path)):
+        raise FileNotFoundError(
+            f"Index not found in '{index_dir}'. Expected embeddings.npy and chunks.json"
+        )
 
+    embeddings = np.load(emb_path).astype(np.float32)
+    with open(meta_path, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+    chunks = [Chunk(text=i.get("text", ""), source=i.get("source", "unknown"), chunk_id=int(i.get("chunk_id", idx))) for idx, i in enumerate(raw)]
 
-def load_index():
-    """
-    Docstring for load_index
-    Loads the embeddings and chunk metadata from the artifacts directory.
-    """
-    if not (os.path.exists(EMBEDDINGS_PATH) and os.path.exists(CHUNKS_PATH)):
-        raise RuntimeError("Index not found. Run build_index.py first.")
-    embeddings = np.load(EMBEDDINGS_PATH)
-    with open(CHUNKS_PATH, "r", encoding="utf-8") as f:
-        chunks = json.load(f)
     return embeddings, chunks
 
 
-def retrieve_top_k(
+def device_hint() -> str:
+    return "cpu"
+
+def retrieve(
     query: str,
     embedder: SentenceTransformer,
     embeddings: np.ndarray,
-    chunks: List[dict],
-    k: int = 3,
-):
-    """
-    Retrieve the top-k most similar chunks to the query.
-    :param query: The user query string
-    :param embedder: The embedding model
-    :param embeddings: The array of chunk embeddings
-    :param chunks: The list of chunk metadata
-    :param k: Number of top chunks to retrieve
-    """
+    chunks: Sequence[Chunk],
+    k: int = 2,
+    min_similarity: float = 0.30,
+) -> Tuple[List[Chunk], np.ndarray]:
+    """Return a filtered top-k set and the full similarity vector."""
     query_vec = embedder.encode([query], convert_to_numpy=True)
     sims = cosine_similarity(query_vec, embeddings)[0]
-    top_idx = sims.argsort()[-k:][::-1]
-    top_chunks = [chunks[i] for i in top_idx]
-    return top_chunks
+
+    # Top-k indices sorted by similarity (desc)
+    top_idx = sims.argsort()[-max(1, k):][::-1]
+
+    # If best match below threshold, return empty
+    if sims[top_idx[0]] < min_similarity:
+        return [], sims
+
+    # Keep chunks within 90% of best and above absolute threshold
+    best = sims[top_idx[0]]
+    filtered_idx = [i for i in top_idx if sims[i] >= 0.9 * best and sims[i] >= min_similarity]
+    return [chunks[i] for i in filtered_idx], sims
 
 
-def build_context(chunks: List[dict], max_chars: int = 1500) -> str:
-    """
-    Concatenate retrieved chunks into a context string with a rough char limit.
-    :param chunks: List of chunk metadata
-    :param max_chars: Maximum number of characters in the context
-    """
-    pieces = []
-    total = 0
-    for c in chunks:
-        t = c["text"].strip()
-        if total + len(t) > max_chars:
+def build_prompt(context: str, query: str) -> str:
+    return (
+        "Use ONLY the context to answer. If the context doesn’t contain the answer, "
+        "reply exactly: I don't know.\n\n"
+        f"Context:\n{context}\n\n"
+        f"Question: {query}\n"
+        "Answer rules:\n"
+        "• Write 1–2 sentences total (<=28 words each).\n"
+        "• Paraphrase; do not copy 5+ consecutive words from the context.\n"
+        "• Be specific and avoid hedging.\n\n"
+        "Answer:"
+    )
+
+
+def truncate_sentences(text: str, n: int = 2, max_words: int = 28) -> str:
+    # Split into sentences (simple, robust enough for short outputs)
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    kept: List[str] = []
+    for s in parts:
+        words = s.strip().split()
+        if not words:
+            continue
+        if len(words) > max_words:
+            words = words[:max_words]
+            if words[-1].endswith((".", "!", "?")):
+                pass
+            else:
+                words[-1] = words[-1].rstrip(",;") + "."
+        kept.append(" ".join(words))
+        if len(kept) >= n:
             break
-        pieces.append(f"From {c['doc']} (chunk {c['chunk_id']}):\n{t}")
-        total += len(t)
-    return "\n\n".join(pieces)
+    # Guarantee 1 sentence minimum if model produced nothing usable
+    if not kept:
+        return "I don't know."
+    return " " .join(kept)
 
-
-def generate_answer(qa_pipeline, prompt: str):
-    """Generate an answer using the LLM pipeline with clean generation params."""
-    # Use max_new_tokens to avoid transformers warning about both params
-    out = qa_pipeline(prompt, max_new_tokens=128, do_sample=False)
-    # pipeline returns list of dicts with 'generated_text' or 'text'
-    text = out[0].get("generated_text") or out[0].get("text") or ""
-    return text.strip()
-
-
-def main():
-    """
-    Docstring for main
-    Main function to query the RAG system
-    1. Load the index (embeddings and chunks)
-    2. Load the embedding model and LLM
-    3. Prompt user for a question
-    4. Retrieve relevant chunks
-    5. Build context and generate answer using LLM
-    6. Display answer and retrieved context
-    """
-    parser = argparse.ArgumentParser(description="Query the local RAG index")
-    parser.add_argument("--question", "-q", help="Run a single question non-interactively")
-    parser.add_argument("--k", type=int, default=3, help="Number of top chunks to retrieve")
-    args = parser.parse_args()
-
+def run_query(
+    query: str,
+    *,
+    index_dir: str,
+    k: int,
+    min_similarity: float,
+    max_words: int,
+    style: str,
+    show_context: bool,
+    embedder_name: str,
+    llm_name: str,
+) -> str:
     print("Loading index...")
-    embeddings, chunks = load_index()
+    embeddings, chunks = load_index(index_dir)
 
-    print(f"Loading embedding model: {EMBED_MODEL_NAME}")
-    embedder = SentenceTransformer(EMBED_MODEL_NAME)
+    print(f"Loading embedding model: {embedder_name}")
+    embedder = SentenceTransformer(embedder_name)
 
-    print(f"Loading LLM: {LLM_MODEL_NAME}")
-    qa_pipeline = pipeline("text2text-generation", model=LLM_MODEL_NAME)
+    print(f"Loading LLM: {llm_name}")
+    textgen = pipeline("text2text-generation", model=llm_name)
 
-    def run_query(query: str, k: int = 3):
-        # Retrieve context early so it's available for transparency even when returning a rule-based summary
-        top_chunks = retrieve_top_k(query, embedder, embeddings, chunks, k=k)
-        context = build_context(top_chunks)
+    print(f"Device set to use {device_hint()}")
+    print("Retrieving relevant context...\n")
 
-        # Simple rule: if user asks about repository purpose, return a concise, handcrafted summary
-        ql = query.lower()
-        purpose_triggers = ["purpose of this repository", "what is the purpose", "what is this repository", "what is the repo for", "purpose"]
-        if any(t in ql for t in purpose_triggers):
-            summary = (
-                "mini-rag is a minimal, local Retrieval-Augmented Generation (RAG) demonstration for experimentation and teaching. "
-                "It embeds local text files, builds a searchable embedding index, and uses a compact instruction-tuned LLM to generate answers from retrieved context."
-            )
-            print("Answer:", summary)
-            print("\n--- Retrieved Context (for transparency) ---")
-            print(context)
-            return
+    k_eff = 1 if re.match(r"\s*what\s+is|\s*who\s+is", query, flags=re.I) else k
 
-        print("Retrieving relevant context...")
+    top_chunks, sims = retrieve(query, embedder, embeddings, chunks, k=k_eff, min_similarity=min_similarity)
 
-        prompt = (
-            "You are an AI assistant. Use ONLY the context below to answer the question. "
-            "If the answer is not contained in the context, reply: 'I don't know'.\n\n"
-            f"Context:\n{context}\n\n"
-            f"Question: {query}\n"
-            "Instructions: Provide a 1-2 sentence summary in your own words — do NOT copy or repeat whole phrases from the context. "
-            "Do NOT reuse any sequence of 5 or more consecutive words that appears verbatim in the context; reword using synonyms and shorter phrasing. "
-            "Be concise and specific. If the context already contains an exact answer, rephrase it instead of quoting.\n\n"
-            "Answer:"
-        )
+    if not top_chunks:
+        context = ""
+    else:
+        context = "\n\n".join(c.text for c in top_chunks)
 
-        print("\nGenerating answer...\n")
-        result = generate_answer(qa_pipeline, prompt)
-        print("Answer:", result)
+    print("Generating answer...\n")
+    prompt = build_prompt(context, query)
 
-        print("\n--- Retrieved Context (for transparency) ---")
-        print(context)
+    raw = textgen(prompt, max_new_tokens=128, num_beams=4, do_sample=False)[0]["generated_text"]
 
-    if args.question:
-        run_query(args.question, k=args.k)
+    answer = truncate_sentences(raw, n=2 if style == "short" else 3, max_words=max_words)
+
+    print(f"Answer: {answer}\n")
+
+    if show_context and top_chunks:
+        print("--- Retrieved Context (for transparency) ---")
+        for c in top_chunks:
+            print(f"From {c.source} (chunk {c.chunk_id}):\n{c.text}\n")
+    elif show_context:
+        print("--- Retrieved Context (for transparency) ---\n<no sufficiently similar chunks>\n")
+
+    return answer
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description="Query a simple RAG index with concise answers.")
+    p.add_argument("--question", "-q", type=str, help="Your question to ask the RAG system.")
+    p.add_argument("--index-dir", type=str, default=INDEX_DIR_DEFAULT, help="Directory with embeddings.npy and chunks.json")
+    p.add_argument("--k", type=int, default=2, help="Top-k chunks to start from (will auto-tighten for definition-style prompts)")
+    p.add_argument("--min-similarity", type=float, default=0.30, help="Absolute similarity threshold for accepting matches")
+    p.add_argument("--max-words", type=int, default=28, help="Max words per sentence in final output")
+    p.add_argument("--style", choices=["short", "medium"], default="short", help="Answer length style (short=1–2 sentences, medium=up to 3)")
+    p.add_argument("--no-context", action="store_true", help="Do not print the retrieved context block")
+    p.add_argument("--embedder-name", type=str, default=EMBEDDER_DEFAULT, help="SentenceTransformer model name")
+    p.add_argument("--llm-name", type=str, default=LLM_MODEL_NAME, help="HF text2text model name")
+    return p
+
+
+def main() -> None:
+    args = build_arg_parser().parse_args()
+
+    # Interactive fallback if no --question provided
+    if not args.question:
+        print("Ready. Type your question (or 'exit' to quit).\n")
+        while True:
+            try:
+                q = input("Question: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                break
+            if not q or q.lower() in {"exit", "quit"}:
+                break
+            try:
+                run_query(
+                    q,
+                    index_dir=args.index_dir,
+                    k=args.k,
+                    min_similarity=args.min_similarity,
+                    max_words=args.max_words,
+                    style=args.style,
+                    show_context=not args.no_context,
+                    embedder_name=args.embedder_name,
+                    llm_name=args.llm_name,
+                )
+            except Exception as e:
+                print(f"Error: {e}")
         return
 
-    print("Ready. Type your question (or 'exit' to quit).")
-    while True:
-        try:
-            query = input("\nQuestion: ").strip()
-        except (KeyboardInterrupt, EOFError):
-            break
-        if not query or query.lower() in {"exit", "quit"}:
-            break
-        run_query(query, k=args.k)
+    # One-shot mode
+    try:
+        run_query(
+            args.question,
+            index_dir=args.index_dir,
+            k=args.k,
+            min_similarity=args.min_similarity,
+            max_words=args.max_words,
+            style=args.style,
+            show_context=not args.no_context,
+            embedder_name=args.embedder_name,
+            llm_name=args.llm_name,
+        )
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(2)
 
 
 if __name__ == "__main__":

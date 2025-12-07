@@ -42,7 +42,7 @@ def load_index(index_dir: str) -> Tuple[np.ndarray, List[Chunk]]:
     embeddings = np.load(emb_path).astype(np.float32)
     with open(meta_path, "r", encoding="utf-8") as f:
         raw = json.load(f)
-    chunks = [Chunk(text=i.get("text", ""), source=i.get("source", "unknown"), chunk_id=int(i.get("chunk_id", idx))) for idx, i in enumerate(raw)]
+    chunks = [Chunk(text=i.get("text", ""), source=i.get("source", i.get("doc", "unknown")), chunk_id=int(i.get("chunk_id", idx))) for idx, i in enumerate(raw)]
 
     return embeddings, chunks
 
@@ -56,7 +56,7 @@ def retrieve(
     embeddings: np.ndarray,
     chunks: Sequence[Chunk],
     k: int = 2,
-    min_similarity: float = 0.30,
+    min_similarity: float = 0.25,
 ) -> Tuple[List[Chunk], np.ndarray]:
     """Return a filtered top-k set and the full similarity vector."""
     query_vec = embedder.encode([query], convert_to_numpy=True)
@@ -77,24 +77,39 @@ def retrieve(
 
 def build_prompt(context: str, query: str) -> str:
     return (
-        "Use ONLY the context to answer. If the context doesn’t contain the answer, "
-        "reply exactly: I don't know.\n\n"
-        f"Context:\n{context}\n\n"
-        f"Question: {query}\n"
-        "Answer rules:\n"
-        "• Write 1–2 sentences total (<=28 words each).\n"
-        "• Paraphrase; do not copy 5+ consecutive words from the context.\n"
-        "• Be specific and avoid hedging.\n\n"
+        f"Question: {query}\n\n"
+        f"Context: {context}\n\n"
+        "Answer the question using the context above. "
+        "Write 1-2 short sentences. "
+        "If the context doesn't answer the question, say: I don't know.\n\n"
         "Answer:"
     )
 
 
 def truncate_sentences(text: str, n: int = 2, max_words: int = 28) -> str:
+    # Remove common prompt artifacts that the LLM might include
+    text = text.strip()
+    if not text:
+        return "I don't know."
+    
+    # Remove "Answer:" prefix if present
+    text = re.sub(r"^Answer:\s*", "", text, flags=re.I)
+    # Remove any leading/trailing quotes
+    text = text.strip('"\'')
+    
     # Split into sentences (simple, robust enough for short outputs)
-    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    parts = re.split(r"(?<=[.!?])\s+", text)
     kept: List[str] = []
     for s in parts:
-        words = s.strip().split()
+        s = s.strip()
+        # Skip if it looks like an instruction rather than an answer (but be less aggressive)
+        s_lower = s.lower()
+        if any(phrase in s_lower for phrase in ["synthesize the information", "don't copy long phrases", "write 1-2 complete sentences"]):
+            continue
+        # Skip very short fragments that are likely artifacts
+        if len(s.split()) < 3:
+            continue
+        words = s.split()
         if not words:
             continue
         if len(words) > max_words:
@@ -109,7 +124,7 @@ def truncate_sentences(text: str, n: int = 2, max_words: int = 28) -> str:
     # Guarantee 1 sentence minimum if model produced nothing usable
     if not kept:
         return "I don't know."
-    return " " .join(kept)
+    return " ".join(kept)
 
 def run_query(
     query: str,
@@ -143,13 +158,44 @@ def run_query(
         context = ""
     else:
         context = "\n\n".join(c.text for c in top_chunks)
+    
+    # Truncate context if it's too long (to avoid sequence length issues)
+    # flan-t5-base has 512 token limit, reserve ~200 for prompt/question/instructions
+    # Conservative estimate: ~1.3 words per token for technical text
+    max_context_words = 240  # ~310 tokens, leaving room for prompt
+    if context:
+        words = context.split()
+        if len(words) > max_context_words:
+            # Keep the most relevant chunks (they're already sorted by relevance)
+            truncated_chunks = []
+            word_count = 0
+            for chunk in top_chunks:
+                chunk_words = chunk.text.split()
+                if word_count + len(chunk_words) > max_context_words:
+                    # Take partial chunk if we have room
+                    remaining = max_context_words - word_count
+                    if remaining > 30:  # Only if meaningful space remains
+                        truncated_chunks.append(" ".join(chunk_words[:remaining]) + "...")
+                    break
+                truncated_chunks.append(chunk.text)
+                word_count += len(chunk_words)
+            context = "\n\n".join(truncated_chunks)
 
     print("Generating answer...\n")
     prompt = build_prompt(context, query)
 
     raw = textgen(prompt, max_new_tokens=128, num_beams=4, do_sample=False)[0]["generated_text"]
-
-    answer = truncate_sentences(raw, n=2 if style == "short" else 3, max_words=max_words)
+    
+    # Debug: show raw output if it looks problematic
+    if not raw or raw.strip().lower() in ["i don't know", "i don't know.", ""]:
+        # Check if we actually have context
+        if not context:
+            answer = "I don't know."
+        else:
+            # LLM might have failed, try to extract something from context
+            answer = truncate_sentences(raw, n=2 if style == "short" else 3, max_words=max_words)
+    else:
+        answer = truncate_sentences(raw, n=2 if style == "short" else 3, max_words=max_words)
 
     print(f"Answer: {answer}\n")
 
@@ -167,7 +213,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--question", "-q", type=str, help="Your question to ask the RAG system.")
     p.add_argument("--index-dir", type=str, default=INDEX_DIR_DEFAULT, help="Directory with embeddings.npy and chunks.json")
     p.add_argument("--k", type=int, default=2, help="Top-k chunks to start from (will auto-tighten for definition-style prompts)")
-    p.add_argument("--min-similarity", type=float, default=0.30, help="Absolute similarity threshold for accepting matches")
+    p.add_argument("--min-similarity", type=float, default=0.25, help="Absolute similarity threshold for accepting matches")
     p.add_argument("--max-words", type=int, default=28, help="Max words per sentence in final output")
     p.add_argument("--style", choices=["short", "medium"], default="short", help="Answer length style (short=1–2 sentences, medium=up to 3)")
     p.add_argument("--no-context", action="store_true", help="Do not print the retrieved context block")

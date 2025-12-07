@@ -47,6 +47,13 @@ This repository demonstrates a minimal RAG pipeline: it embeds local text docume
 - The LLM generation is constrained for brevity: answers are post-processed to produce 1–2 short sentences (word-truncated if necessary) to keep responses concise and easier to read.
 - You can adjust the threshold and output behavior by editing `src/query_rag.py` (see `retrieve_top_k(..., min_similarity=...)` and the `generate_answer` post-processing logic).
 
+Notes from recent runs:
+
+- **Module invocation:** Use `python -m src.query_rag` (underscore). Running `python -m src.query.rag` will raise `ModuleNotFoundError` because the module name uses an underscore rather than a dotted package path.
+- **Models used:** Embeddings: `sentence-transformers/all-MiniLM-L6-v2`. LLM: `google/flan-t5-base`. Both models are downloaded automatically on first run (internet required).
+- **Device fallback:** The scripts detect available devices and will fall back to CPU if a GPU is not available (you will see `Device set to use cpu`). The example runs used CPU.
+- **Retrieval behavior:** If no chunk passes the `min_similarity` threshold the tool returns `I don't know`. This prevents ungrounded LLM hallucination but means specific queries may produce no answer until you add relevant documents to `data/` or lower the threshold.
+
 ## Project Structure
 
 ```
@@ -88,4 +95,16 @@ python -m src.query_rag --question "What is a large language model?" --k 3
 Rebuild the index after changing files in `data/`:
 ```
 python -m src.build_index
+```
+
+If you see unexpected `I don't know` answers, try the following:
+
+```
+# 1) Ensure relevant text files are present in `data/`
+python -m src.build_index
+
+# 2) Re-run the query loop
+python -m src.query_rag
+
+# 3) Optionally lower the similarity threshold by editing `src/query_rag.py`
 ```

@@ -1,6 +1,11 @@
 # mini-rag
 
-A compact Retrieval-Augmented Generation (RAG) demonstration that embeds local text files and answers questions using instruction-tuned language models.
+This repository is a **personal playground** for experimenting with Retrieval-Augmented Generation (RAG) techniques on small local text corpora. It is intended for learning and prototyping only; the implementation is simplified, and the retrieval and answer quality are **not tuned for production or mission-critical use**.
+
+The code provides a minimal end‑to‑end RAG pipeline that:
+- embeds local text files,
+- retrieves semantically similar chunks for a given query, and
+- uses a small instruction‑tuned language model to generate a concise answer from the retrieved context.
 
 ## Getting Started
 

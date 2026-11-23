@@ -11,16 +11,26 @@ The code provides a minimal end‑to‑end RAG pipeline that:
 
 ### Prerequisites
 
-- Python 3.8 or higher
+- Python 3.10–3.11
 - Internet access (models are downloaded on first run)
 
-1. Create and activate a virtual environment (PowerShell):
+1. Create a virtual environment and install the dependencies.
 
-```
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+   Bash:
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   python -m pip install -r requirements.txt
+   ```
+
+   PowerShell:
+
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   python -m pip install -r requirements.txt
+   ```
 
 2. Build the retrieval index (creates `artifacts/`):
 
@@ -56,6 +66,8 @@ Expected Output:
 Self-attention lets each token attend to every other token in the sequence, computing weighted combinations of token representations
 ```
 
+Example outputs from a local run; exact wording may vary by model version.
+
 ## Retrieval & Answering Behavior
 
 - The retriever uses cosine similarity over chunk embeddings. A minimum similarity threshold is applied (default: `0.25`) — if no chunk meets this threshold the system will respond with `I don't know` to avoid hallucination.
@@ -64,13 +76,17 @@ Self-attention lets each token attend to every other token in the sequence, comp
 - Source attribution: Retrieved chunks display their source filename and chunk ID for transparency.
 - You can adjust the threshold and output behavior via command-line arguments or by editing `src/query_rag.py` (see `retrieve(..., min_similarity=...)` and the `truncate_sentences` post-processing logic).
 
-## Recent Improvements
+## Tests
 
-- **Simplified prompt engineering:** Optimized prompts for better performance with small language models (flan-t5-base)
-- **Improved answer extraction:** Better filtering of prompt artifacts and instruction leakage
-- **Context truncation:** Automatic handling of long contexts to prevent sequence length errors
-- **Fixed source metadata:** Chunks now correctly display their source filenames
-- **Lowered similarity threshold:** Default threshold reduced from 0.30 to 0.25 for better recall
+```bash
+python -m pip install -r requirements-dev.txt
+ruff check .
+pytest -q
+```
+
+The unit tests use synthetic vectors and do not download models. Run
+`python -m src.eval_retrieval` to evaluate source retrieval using the committed
+index and the sample questions. This command downloads the embedding model on first run.
 
 ## Technical Notes
 

@@ -1,0 +1,10 @@
+{"question": "Why can language models hallucinate even after training on web pages?", "source": "sample_1.txt"}
+{"question": "How can reinforcement learning from human feedback help align language models?", "source": "sample_1.txt"}
+{"question": "What does the training objective of a large language model predict?", "source": "sample_1.txt"}
+{"question": "How can language models ground their answers in external data?", "source": "sample_1.txt"}
+{"question": "How does self-attention combine information from different tokens?", "source": "sample_2.txt"}
+{"question": "Which paper introduced the Transformer architecture?", "source": "sample_2.txt"}
+{"question": "Why do Transformer models use positional encodings?", "source": "sample_2.txt"}
+{"question": "What are the parts of a Transformer encoder layer?", "source": "sample_2.txt"}
+{"question": "Which command builds this repository’s local embeddings index?", "source": "sample_3.txt"}
+{"question": "Where should I put source text files for mini-rag?", "source": "sample_3.txt"}

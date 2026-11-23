@@ -5,28 +5,20 @@ Date: 2025-12-04
 Description:
 Builds an index of document chunks and their embeddings for retrieval.
 """
-import os
 import json
-from typing import List, Dict
+import os
+from typing import Dict, List
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "artifacts")
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 def load_documents(data_dir: str) -> List[Dict]:
-    """
-    Docstring for load_documents
-    
-    :param data_dir: Description
-    :type data_dir: str
-    :return: Description
-    :rtype: List[Dict]
-    """
+    """Read UTF-8 text documents in filename order."""
     docs = []
-    for fname in os.listdir(data_dir):
+    for fname in sorted(os.listdir(data_dir)):
         if fname.lower().endswith(".txt"):
             path = os.path.join(data_dir, fname)
             with open(path, "r", encoding="utf-8") as f:
@@ -36,18 +28,7 @@ def load_documents(data_dir: str) -> List[Dict]:
 
 
 def chunk_text(text: str, chunk_size: int = 400, overlap: int = 100) -> List[str]:
-    """
-    Splits text into chunks of approximately chunk_size words, with specified overlap.
-
-    :param text: The text to chunk
-    :type text: str
-    :param chunk_size: Number of words per chunk
-    :type chunk_size: int
-    :param overlap: Number of overlapping words between chunks
-    :type overlap: int
-    :return: List of text chunks
-    :rtype: List[str]
-    """
+    """Split text into word chunks with overlap between successive chunks."""
     words = text.split()
     chunks = []
     start = 0
@@ -62,14 +43,10 @@ def chunk_text(text: str, chunk_size: int = 400, overlap: int = 100) -> List[str
 
 
 def main():
-    """
-    Docstring for main
-    Main function to build the index
-    1. Load documents from data directory
-    2. Chunk the documents
-    3. Generate embeddings for each chunk
-    4. Save embeddings and chunk metadata to artifacts directory
-    """
+    """Embed corpus chunks and save their vectors and metadata."""
+    import torch
+    from sentence_transformers import SentenceTransformer
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     print(f"Loading documents from {DATA_DIR}...")
@@ -94,7 +71,8 @@ def main():
     texts = [c["text"] for c in all_chunks]
 
     print(f"Loading embedding model: {MODEL_NAME}")
-    model = SentenceTransformer(MODEL_NAME)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = SentenceTransformer(MODEL_NAME, device=device)
 
     print("Encoding chunks...")
     embeddings = model.encode(texts, convert_to_numpy=True, show_progress_bar=True)

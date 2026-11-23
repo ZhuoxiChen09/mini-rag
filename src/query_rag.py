@@ -1,5 +1,5 @@
 """
-File: query_rag.py 
+File: query_rag.py
 Author: Derrick Chen
 Date: 2025-12-04
 Description:
@@ -14,12 +14,13 @@ import os
 import re
 import sys
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
+from typing import TYPE_CHECKING, List, Sequence, Tuple
 
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
-from transformers import pipeline
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 INDEX_DIR_DEFAULT = os.path.join(os.path.dirname(__file__), "..", "artifacts")
 EMBEDDER_DEFAULT = "sentence-transformers/all-MiniLM-L6-v2"
@@ -48,7 +49,31 @@ def load_index(index_dir: str) -> Tuple[np.ndarray, List[Chunk]]:
 
 
 def device_hint() -> str:
-    return "cpu"
+    import torch
+
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def load_embedder(model_name: str, device: str) -> SentenceTransformer:
+    from sentence_transformers import SentenceTransformer
+
+    return SentenceTransformer(model_name, device=device)
+
+
+def load_query_resources(index_dir: str, embedder_name: str, llm_name: str):
+    from transformers import pipeline
+
+    device = device_hint()
+    print("Loading index...")
+    embeddings, chunks = load_index(index_dir)
+
+    print(f"Loading embedding model: {embedder_name}")
+    embedder = load_embedder(embedder_name, device)
+
+    print(f"Loading LLM: {llm_name}")
+    textgen = pipeline("text2text-generation", model=llm_name, device=device)
+    print(f"Device set to use {device}")
+    return embeddings, chunks, embedder, textgen
 
 def retrieve(
     query: str,
@@ -91,12 +116,12 @@ def truncate_sentences(text: str, n: int = 2, max_words: int = 28) -> str:
     text = text.strip()
     if not text:
         return "I don't know."
-    
+
     # Remove "Answer:" prefix if present
     text = re.sub(r"^Answer:\s*", "", text, flags=re.I)
     # Remove any leading/trailing quotes
     text = text.strip('"\'')
-    
+
     # Split into sentences (simple, robust enough for short outputs)
     parts = re.split(r"(?<=[.!?])\s+", text)
     kept: List[str] = []
@@ -129,36 +154,26 @@ def truncate_sentences(text: str, n: int = 2, max_words: int = 28) -> str:
 def run_query(
     query: str,
     *,
-    index_dir: str,
+    resources,
     k: int,
     min_similarity: float,
     max_words: int,
     style: str,
     show_context: bool,
-    embedder_name: str,
-    llm_name: str,
 ) -> str:
-    print("Loading index...")
-    embeddings, chunks = load_index(index_dir)
+    embeddings, chunks, embedder, textgen = resources
 
-    print(f"Loading embedding model: {embedder_name}")
-    embedder = SentenceTransformer(embedder_name)
-
-    print(f"Loading LLM: {llm_name}")
-    textgen = pipeline("text2text-generation", model=llm_name)
-
-    print(f"Device set to use {device_hint()}")
     print("Retrieving relevant context...\n")
 
     k_eff = 1 if re.match(r"\s*what\s+is|\s*who\s+is", query, flags=re.I) else k
 
-    top_chunks, sims = retrieve(query, embedder, embeddings, chunks, k=k_eff, min_similarity=min_similarity)
+    top_chunks, _ = retrieve(query, embedder, embeddings, chunks, k=k_eff, min_similarity=min_similarity)
 
     if not top_chunks:
         context = ""
     else:
         context = "\n\n".join(c.text for c in top_chunks)
-    
+
     # Truncate context if it's too long (to avoid sequence length issues)
     # flan-t5-base has 512 token limit, reserve ~200 for prompt/question/instructions
     # Conservative estimate: ~1.3 words per token for technical text
@@ -185,7 +200,7 @@ def run_query(
     prompt = build_prompt(context, query)
 
     raw = textgen(prompt, max_new_tokens=128, num_beams=4, do_sample=False)[0]["generated_text"]
-    
+
     # Debug: show raw output if it looks problematic
     if not raw or raw.strip().lower() in ["i don't know", "i don't know.", ""]:
         # Check if we actually have context
@@ -225,48 +240,41 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_arg_parser().parse_args()
 
-    # Interactive fallback if no --question provided
-    if not args.question:
-        print("Ready. Type your question (or 'exit' to quit).\n")
-        while True:
-            try:
-                q = input("Question: ").strip()
-            except (KeyboardInterrupt, EOFError):
-                break
-            if not q or q.lower() in {"exit", "quit"}:
-                break
-            try:
-                run_query(
-                    q,
-                    index_dir=args.index_dir,
-                    k=args.k,
-                    min_similarity=args.min_similarity,
-                    max_words=args.max_words,
-                    style=args.style,
-                    show_context=not args.no_context,
-                    embedder_name=args.embedder_name,
-                    llm_name=args.llm_name,
-                )
-            except Exception as e:
-                print(f"Error: {e}")
-        return
+    resources = None
 
-    # One-shot mode
-    try:
-        run_query(
-            args.question,
-            index_dir=args.index_dir,
+    def answer(question: str) -> str:
+        nonlocal resources
+        if resources is None:
+            resources = load_query_resources(args.index_dir, args.embedder_name, args.llm_name)
+        return run_query(
+            question,
+            resources=resources,
             k=args.k,
             min_similarity=args.min_similarity,
             max_words=args.max_words,
             style=args.style,
             show_context=not args.no_context,
-            embedder_name=args.embedder_name,
-            llm_name=args.llm_name,
         )
-    except Exception as e:
-        print(f"Error: {e}")
-        sys.exit(2)
+
+    if not args.question:
+        print("Ready. Type your question (or 'exit' to quit).\n")
+        while True:
+            try:
+                question = input("Question: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                return
+            if not question or question.lower() in {"exit", "quit"}:
+                return
+            try:
+                answer(question)
+            except Exception as e:
+                print(f"Error: {e}")
+    else:
+        try:
+            answer(args.question)
+        except Exception as e:
+            print(f"Error: {e}")
+            sys.exit(2)
 
 
 if __name__ == "__main__":

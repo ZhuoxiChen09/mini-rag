@@ -8,3 +8,7 @@
 {"question": "What are the parts of a Transformer encoder layer?", "source": "sample_2.txt"}
 {"question": "Which command builds this repository’s local embeddings index?", "source": "sample_3.txt"}
 {"question": "Where should I put source text files for mini-rag?", "source": "sample_3.txt"}
+{"question": "What oven temperature does the sourdough recipe recommend?", "source": null}
+{"question": "Which track won the 2020 music competition?", "source": null}
+{"question": "What was the electricity bill for training the Transformer in the original paper?", "source": null}
+{"question": "What precision did this repository achieve on the MS MARCO benchmark?", "source": null}

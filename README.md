@@ -70,7 +70,7 @@ Example outputs from a local run; exact wording may vary by model version.
 
 ## Retrieval & Answering Behavior
 
-- The retriever uses cosine similarity over chunk embeddings. A minimum similarity threshold is applied (default: `0.25`) — if no chunk meets this threshold the system will respond with `I don't know` to avoid hallucination.
+- The retriever uses cosine similarity over chunk embeddings. A minimum similarity threshold is applied (default: `0.25`) — if no chunk meets this threshold the system will respond with `I don't know` before calling the generator.
 - The LLM generation is constrained for brevity: answers are post-processed to produce 1–2 short sentences (word-truncated if necessary) to keep responses concise and easier to read.
 - Context truncation: Long contexts are automatically truncated to fit within the model's sequence length limit (512 tokens), prioritizing the most relevant chunks.
 - Source attribution: Retrieved chunks display their source filename and chunk ID for transparency.
@@ -85,15 +85,14 @@ pytest -q
 ```
 
 The unit tests use synthetic vectors and do not download models. Run
-`python -m src.eval_retrieval` to evaluate source retrieval using the committed
-index and the sample questions. This command downloads the embedding model on first run.
+`python -m src.eval_retrieval` to evaluate source retrieval on ten labeled questions and measure retrieval abstention on four questions outside the corpus. The evaluator prints source hit@1 and hit@3 on answerable questions and the fraction of out-of-corpus questions for which no chunk was returned. It does not grade generated answers. Use `--min-similarity` to compare thresholds on the same questions. This command downloads the embedding model on first run.
 
 ## Technical Notes
 
 - **Module invocation:** Use `python -m src.query_rag` (underscore). Running `python -m src.query.rag` will raise `ModuleNotFoundError` because the module name uses an underscore rather than a dotted package path.
 - **Models used:** Embeddings: `sentence-transformers/all-MiniLM-L6-v2`. LLM: `google/flan-t5-base`. Both models are downloaded automatically on first run (internet required).
 - **Device fallback:** The scripts detect available devices and will fall back to CPU if a GPU is not available (you will see `Device set to use cpu`). The example runs used CPU.
-- **Retrieval behavior:** If no chunk passes the `min_similarity` threshold the tool returns `I don't know`. This prevents ungrounded LLM hallucination but means specific queries may produce no answer until you add relevant documents to `data/` or lower the threshold.
+- **Retrieval behavior:** If no chunk passes the `min_similarity` threshold the tool returns `I don't know`. A retrieved chunk can still be irrelevant or insufficient, so an answer can be wrong even when the cutoff is met.
 - **Context length:** The system automatically truncates contexts to ~240 words to fit within the model's 512-token limit, ensuring reliable generation without sequence length errors.
 
 ## Project Structure

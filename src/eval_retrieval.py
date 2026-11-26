@@ -21,6 +21,7 @@ def main() -> None:
     parser.add_argument("--questions", type=Path, default=QUESTIONS_DEFAULT)
     parser.add_argument("--index-dir", default=INDEX_DIR_DEFAULT)
     parser.add_argument("--embedder-name", default=EMBEDDER_DEFAULT)
+    parser.add_argument("--min-similarity", type=float, default=0.25)
     args = parser.parse_args()
 
     with args.questions.open(encoding="utf-8") as file:
@@ -31,12 +32,25 @@ def main() -> None:
     embeddings, chunks = load_index(args.index_dir)
     embedder = load_embedder(args.embedder_name, device_hint())
     hits = {1: 0, 3: 0}
+    answerable = 0
+    abstained = 0
     for example in examples:
-        top, _ = retrieve(example["question"], embedder, embeddings, chunks, k=max(hits))
+        top, _ = retrieve(
+            example["question"], embedder, embeddings, chunks,
+            k=max(hits), min_similarity=args.min_similarity,
+        )
+        if example["source"] is None:
+            abstained += int(not top)
+            continue
+        answerable += 1
         for k in hits:
             hits[k] += any(chunk.source == example["source"] for chunk in top[:k])
-    for k, count in hits.items():
-        print(f"hit@{k}: {count}/{len(examples)} ({count / len(examples):.1%})")
+    if answerable:
+        for k, count in hits.items():
+            print(f"hit@{k}: {count}/{answerable} ({count / answerable:.1%})")
+    unanswerable = len(examples) - answerable
+    if unanswerable:
+        print(f"correct abstentions: {abstained}/{unanswerable} ({abstained / unanswerable:.1%})")
 
 
 if __name__ == "__main__":
